@@ -1,0 +1,534 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="Interactive CCM World Invite Chicago facility and hotel map">
+<title>CCM World Invite — Chicago Facilities</title>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+
+<style>
+:root {
+  --rink: #1f5aa6;
+  --hotel: #7a2e8e;
+  --panel: rgba(255,255,255,.97);
+  --text: #171717;
+  --muted: #555;
+}
+html, body { height: 100%; margin: 0; }
+body { font-family: Arial, Helvetica, sans-serif; color: var(--text); }
+#map { height: 100%; width: 100%; }
+
+.map-title {
+  position: absolute;
+  z-index: 1000;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(740px, calc(100% - 34px));
+  background: rgba(255,255,255,.94);
+  border-radius: 9px;
+  box-shadow: 0 1px 7px rgba(0,0,0,.25);
+  padding: 8px 12px;
+  text-align: center;
+  pointer-events: none;
+}
+.map-title h1 { margin: 0; font-size: 17px; }
+.map-title p { margin: 3px 0 0; font-size: 11px; color: #444; }
+
+.control-panel {
+  background: var(--panel);
+  padding: 10px;
+  border-radius: 8px;
+  box-shadow: 0 1px 6px rgba(0,0,0,.25);
+  width: 250px;
+}
+.control-panel h3 { margin: 0 0 7px; font-size: 14px; }
+.control-panel label {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  margin: 7px 0 3px;
+}
+.control-panel input,
+.control-panel select {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 7px 8px;
+  border: 1px solid #aaa;
+  border-radius: 5px;
+  font-size: 12px;
+}
+.control-panel button {
+  width: 100%;
+  margin-top: 7px;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 5px;
+  background: #245a9b;
+  color: white;
+  font-weight: 700;
+  cursor: pointer;
+}
+.control-panel button.secondary { background: #666; }
+.control-panel .status {
+  margin-top: 8px;
+  padding-top: 7px;
+  border-top: 1px solid #ddd;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.rink-marker {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--rink);
+  border: 2px solid white;
+  box-shadow: 0 1px 4px rgba(0,0,0,.48);
+}
+.hotel-marker {
+  width: 23px;
+  height: 23px;
+  border-radius: 5px;
+  background: var(--hotel);
+  color: white;
+  border: 2px solid white;
+  box-shadow: 0 1px 4px rgba(0,0,0,.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 11px;
+}
+
+.facility-label,
+.hotel-label {
+  box-shadow: none;
+  font-size: 8px;
+  font-weight: 600;
+  line-height: 1.1;
+  padding: 1px 3px;
+  white-space: nowrap;
+}
+.facility-label {
+  background: rgba(255,255,255,.80);
+  border: 1px solid rgba(45,45,45,.22);
+  color: #161616;
+}
+.hotel-label {
+  background: rgba(255,248,255,.88);
+  border: 1px solid rgba(122,46,142,.55);
+  color: #5c176b;
+}
+.facility-label:before,
+.hotel-label:before { display: none; }
+.label-hidden { opacity: 0 !important; pointer-events: none !important; }
+.label-visible { opacity: 1 !important; }
+
+.popup-title {
+  display: block;
+  font-size: 14px;
+  font-weight: 700;
+  margin-bottom: 5px;
+}
+.popup-address { margin-bottom: 8px; line-height: 1.35; }
+.popup-actions { display: grid; gap: 5px; }
+.popup-actions button {
+  border: 0;
+  border-radius: 5px;
+  background: #245a9b;
+  color: white;
+  padding: 7px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.popup-actions button.hotel-origin { background: var(--hotel); }
+
+.legend {
+  background: rgba(255,255,255,.93);
+  padding: 7px 9px;
+  border-radius: 7px;
+  box-shadow: 0 1px 5px rgba(0,0,0,.22);
+  font-size: 10px;
+}
+.legend-row { display: flex; align-items: center; gap: 6px; margin: 2px 0; }
+.legend-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--rink); }
+.legend-hotel {
+  width: 16px; height: 16px; border-radius: 4px; background: var(--hotel);
+  color: white; display: inline-flex; align-items: center; justify-content: center;
+  font-size: 8px; font-weight: 700;
+}
+
+.modal-backdrop {
+  position: fixed;
+  z-index: 3000;
+  inset: 0;
+  background: rgba(0,0,0,.48);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+}
+.modal-backdrop.open { display: flex; }
+.modal {
+  width: min(440px, 100%);
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 8px 30px rgba(0,0,0,.35);
+  padding: 18px;
+}
+.modal h2 { margin: 0 0 6px; font-size: 18px; }
+.modal p { margin: 0 0 12px; font-size: 12px; line-height: 1.4; color: #444; }
+.direction-grid { display: grid; gap: 8px; }
+.direction-grid a {
+  display: block;
+  text-align: center;
+  padding: 10px;
+  border-radius: 7px;
+  color: white;
+  text-decoration: none;
+  font-weight: 700;
+}
+.direction-google { background: #1a73e8; }
+.direction-apple { background: #111; }
+.direction-waze { background: #087e8b; }
+.modal button {
+  width: 100%;
+  margin-top: 10px;
+  border: 1px solid #aaa;
+  background: white;
+  border-radius: 7px;
+  padding: 8px;
+  cursor: pointer;
+}
+.waze-note { font-size: 10px !important; margin-top: 9px !important; }
+
+@media (max-width: 700px) {
+  .map-title { top: 6px; padding: 7px 10px; }
+  .map-title h1 { font-size: 14px; }
+  .map-title p { font-size: 9px; }
+  .control-panel { width: 210px; }
+  .facility-label, .hotel-label { font-size: 7px; }
+}
+</style>
+</head>
+
+<body>
+<div class="map-title">
+  <h1>CCM World Invite — Chicago Area Facilities</h1>
+  <p>Zoom in to reveal facility names. Select a hotel, then choose a rink for directions.</p>
+</div>
+
+<div id="map" aria-label="Interactive CCM World Invite map"></div>
+
+<div id="directionsModal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="directionsTitle">
+  <div class="modal">
+    <h2 id="directionsTitle">Choose a directions app</h2>
+    <p id="directionsSummary"></p>
+    <div class="direction-grid">
+      <a id="googleLink" class="direction-google" target="_blank" rel="noopener">Google Maps</a>
+      <a id="appleLink" class="direction-apple" target="_blank" rel="noopener">Apple Maps</a>
+      <a id="wazeLink" class="direction-waze" target="_blank" rel="noopener">Waze</a>
+    </div>
+    <p class="waze-note">
+      Waze routes from the device’s current location. Google Maps and Apple Maps
+      can preserve the selected hotel as the route starting point.
+    </p>
+    <button id="closeModal" type="button">Close</button>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+const map = L.map("map", { zoomControl: true, scrollWheelZoom: true });
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  maxZoom: 19,
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>'
+}).addTo(map);
+
+const facilityLayer = L.layerGroup().addTo(map);
+const hotelLayer = L.layerGroup().addTo(map);
+const allMarkers = [];
+const labelRecords = [];
+const hotels = [];
+let activeOriginHotel = null;
+
+function rinkIcon() {
+  return L.divIcon({
+    className: "",
+    html: '<div class="rink-marker"></div>',
+    iconSize: [17,17],
+    iconAnchor: [8,8],
+    popupAnchor: [0,-9]
+  });
+}
+function hotelIcon() {
+  return L.divIcon({
+    className: "",
+    html: '<div class="hotel-marker">H</div>',
+    iconSize: [27,27],
+    iconAnchor: [13,13],
+    popupAnchor: [0,-14]
+  });
+}
+function esc(value) {
+  return String(value ?? "")
+    .replaceAll("&","&amp;")
+    .replaceAll("<","&lt;")
+    .replaceAll(">","&gt;")
+    .replaceAll('"',"&quot;")
+    .replaceAll("'","&#039;");
+}
+function googleUrl(origin, destination) {
+  const base = "https://www.google.com/maps/dir/?api=1";
+  const o = origin ? `&origin=${origin.lat},${origin.lon}` : "";
+  return `${base}${o}&destination=${destination.lat},${destination.lon}&travelmode=driving`;
+}
+function appleUrl(origin, destination) {
+  const o = origin ? `?saddr=${origin.lat},${origin.lon}` : "?saddr=Current+Location";
+  return `https://maps.apple.com/${o}&daddr=${destination.lat},${destination.lon}&dirflg=d`;
+}
+function wazeUrl(destination) {
+  return `https://www.waze.com/ul?ll=${destination.lat},${destination.lon}&navigate=yes`;
+}
+function openDirectionsChooser(destination, origin = null) {
+  const startText = origin ? origin.name : "your current location";
+  document.getElementById("directionsSummary").textContent =
+    `Driving directions from ${startText} to ${destination.name}.`;
+  document.getElementById("googleLink").href = googleUrl(origin, destination);
+  document.getElementById("appleLink").href = appleUrl(origin, destination);
+  document.getElementById("wazeLink").href = wazeUrl(destination);
+  document.getElementById("directionsModal").classList.add("open");
+}
+
+document.getElementById("closeModal").addEventListener("click", () => {
+  document.getElementById("directionsModal").classList.remove("open");
+});
+document.getElementById("directionsModal").addEventListener("click", e => {
+  if (e.target.id === "directionsModal") {
+    document.getElementById("directionsModal").classList.remove("open");
+  }
+});
+
+function popupHtml(record) {
+  const isHotel = record.type === "hotel";
+  return `
+    <span class="popup-title">${esc(record.name)}</span>
+    <div class="popup-address">${esc(record.address || "")}</div>
+    <div class="popup-actions">
+      <button type="button" class="directions-current"
+        data-lat="${record.lat}" data-lon="${record.lon}" data-name="${esc(record.name)}">
+        Directions from my location
+      </button>
+      ${!isHotel && activeOriginHotel ? `
+        <button type="button" class="directions-hotel"
+          data-lat="${record.lat}" data-lon="${record.lon}" data-name="${esc(record.name)}">
+          Directions from ${esc(activeOriginHotel.name)}
+        </button>` : ""}
+      ${isHotel ? `
+        <button type="button" class="hotel-origin"
+          data-lat="${record.lat}" data-lon="${record.lon}" data-name="${esc(record.name)}">
+          Use this hotel as starting point
+        </button>` : ""}
+    </div>
+  `;
+}
+
+function addFacility(feature) {
+  const [lon, lat] = feature.geometry.coordinates;
+  const p = feature.properties;
+  const record = {
+    type: "facility",
+    name: p.facility_name,
+    shortName: p.short_name || p.facility_name,
+    address: p.full_address,
+    lat, lon
+  };
+  const marker = L.marker([lat, lon], { icon: rinkIcon(), title: record.name, riseOnHover: true });
+  marker.bindTooltip(record.shortName, {
+    permanent: true,
+    direction: "right",
+    offset: [8,0],
+    className: "facility-label"
+  });
+  marker.bindPopup(() => popupHtml(record));
+  marker.addTo(facilityLayer);
+  allMarkers.push(marker);
+  labelRecords.push({ marker, record });
+}
+
+function addHotel(feature) {
+  const [lon, lat] = feature.geometry.coordinates;
+  const p = feature.properties;
+  const record = {
+    type: "hotel",
+    name: p.facility_name,
+    shortName: p.short_name || p.facility_name,
+    address: p.full_address,
+    lat, lon
+  };
+  const marker = L.marker([lat, lon], { icon: hotelIcon(), title: record.name, riseOnHover: true });
+  marker.bindTooltip(record.shortName, {
+    permanent: true,
+    direction: "right",
+    offset: [12,0],
+    className: "hotel-label"
+  });
+  marker.bindPopup(() => popupHtml(record));
+  marker.addTo(hotelLayer);
+  record.marker = marker;
+  hotels.push(record);
+  allMarkers.push(marker);
+  labelRecords.push({ marker, record });
+  if (!activeOriginHotel) activeOriginHotel = record;
+}
+
+function updateLabelVisibility() {
+  const z = map.getZoom();
+  for (const item of labelRecords) {
+    const el = item.marker.getTooltip()?.getElement();
+    if (!el) continue;
+    if (z < 10) {
+      el.classList.add("label-hidden");
+      el.classList.remove("label-visible");
+    } else {
+      item.marker.setTooltipContent(z >= 12 ? item.record.name : item.record.shortName);
+      el.classList.remove("label-hidden");
+      el.classList.add("label-visible");
+    }
+  }
+}
+map.on("zoomend", updateLabelVisibility);
+
+map.on("popupopen", () => {
+  document.querySelectorAll(".directions-current").forEach(btn => {
+    btn.addEventListener("click", () => openDirectionsChooser({
+      name: btn.dataset.name,
+      lat: Number(btn.dataset.lat),
+      lon: Number(btn.dataset.lon)
+    }));
+  });
+  document.querySelectorAll(".directions-hotel").forEach(btn => {
+    btn.addEventListener("click", () => openDirectionsChooser({
+      name: btn.dataset.name,
+      lat: Number(btn.dataset.lat),
+      lon: Number(btn.dataset.lon)
+    }, activeOriginHotel));
+  });
+  document.querySelectorAll(".hotel-origin").forEach(btn => {
+    btn.addEventListener("click", () => {
+      activeOriginHotel = {
+        type: "hotel",
+        name: btn.dataset.name,
+        lat: Number(btn.dataset.lat),
+        lon: Number(btn.dataset.lon)
+      };
+      document.getElementById("statusBox").textContent =
+        `Directions starting hotel: ${activeOriginHotel.name}`;
+      map.closePopup();
+    });
+  });
+});
+
+async function loadData() {
+  try {
+    const response = await fetch("locations.geojson", { cache: "no-store" });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = await response.json();
+
+    for (const feature of data.features) {
+      if (feature.properties.location_type === "hotel") addHotel(feature);
+      else addFacility(feature);
+    }
+
+    map.fitBounds(L.featureGroup(allMarkers).getBounds(), {
+      paddingTopLeft: [35,100],
+      paddingBottomRight: [35,35]
+    });
+    setTimeout(updateLabelVisibility, 0);
+
+    document.getElementById("hotelSelect").innerHTML =
+      hotels.map((h, i) => `<option value="${i}">${esc(h.name)}</option>`).join("");
+
+    document.getElementById("statusBox").textContent =
+      `Directions starting hotel: ${activeOriginHotel ? activeOriginHotel.name : "none selected"}`;
+  } catch (error) {
+    alert("The map data could not be loaded. Confirm locations.geojson is beside index.html.");
+    console.error(error);
+  }
+}
+
+const panel = L.control({ position: "topright" });
+panel.onAdd = function() {
+  const div = L.DomUtil.create("div", "control-panel");
+  div.innerHTML = `
+    <h3>Search and directions</h3>
+
+    <label for="placeSearch">Find a rink or hotel</label>
+    <input id="placeSearch" type="text" placeholder="Example: Seven Bridges">
+
+    <label for="hotelSelect">Starting hotel</label>
+    <select id="hotelSelect"></select>
+
+    <button id="setHotel" type="button">Use selected hotel</button>
+    <button id="fitAll" type="button" class="secondary">Zoom to all locations</button>
+
+    <div id="statusBox" class="status">Loading locations…</div>
+  `;
+  L.DomEvent.disableClickPropagation(div);
+  L.DomEvent.disableScrollPropagation(div);
+  return div;
+};
+panel.addTo(map);
+
+document.getElementById("placeSearch").addEventListener("keydown", e => {
+  if (e.key !== "Enter") return;
+  const q = e.target.value.trim().toLowerCase();
+  const marker = allMarkers.find(m => (m.options.title || "").toLowerCase().includes(q));
+  if (marker) {
+    map.setView(marker.getLatLng(), 13);
+    marker.openPopup();
+    document.getElementById("statusBox").textContent = `Found: ${marker.options.title}`;
+  } else {
+    document.getElementById("statusBox").textContent = "No matching rink or hotel found.";
+  }
+});
+
+document.getElementById("setHotel").addEventListener("click", () => {
+  const index = Number(document.getElementById("hotelSelect").value);
+  activeOriginHotel = hotels[index];
+  document.getElementById("statusBox").textContent =
+    `Directions starting hotel: ${activeOriginHotel.name}`;
+  map.setView([activeOriginHotel.lat, activeOriginHotel.lon], 12);
+  activeOriginHotel.marker.openPopup();
+});
+
+document.getElementById("fitAll").addEventListener("click", () => {
+  map.fitBounds(L.featureGroup(allMarkers).getBounds(), { padding: [35,35] });
+});
+
+L.control.layers(null, {
+  "Tournament facilities": facilityLayer,
+  "Hotels": hotelLayer
+}, { collapsed: true }).addTo(map);
+
+const legend = L.control({ position: "bottomleft" });
+legend.onAdd = function() {
+  const div = L.DomUtil.create("div", "legend");
+  div.innerHTML = `
+    <div class="legend-row"><span class="legend-dot"></span><span>Tournament facility</span></div>
+    <div class="legend-row"><span class="legend-hotel">H</span><span>Hotel</span></div>
+  `;
+  return div;
+};
+legend.addTo(map);
+
+L.control.scale({ imperial: true, metric: false }).addTo(map);
+loadData();
+</script>
+</body>
+</html>
